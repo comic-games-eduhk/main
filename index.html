@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Melody Block Composer</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Kid-friendly fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Balsamiq+Sans:wght@400;700&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #f0fdf4;
+            background-image: radial-gradient(#bbf7d0 2px, transparent 2px);
+            background-size: 30px 30px;
+            overscroll-behavior-y: contain; 
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .title-font { font-family: 'Balsamiq Sans', cursive; }
+
+        /* Custom 16-column grid for the composer */
+        .composer-grid {
+            display: grid;
+            grid-template-columns: repeat(16, minmax(0, 1fr));
+            gap: 4px;
+        }
+        
+        /* Grid spans for rhythm blocks */
+        .col-span-1 { grid-column: span 1; }
+        .col-span-2 { grid-column: span 2; }
+        .col-span-3 { grid-column: span 3; }
+        .col-span-4 { grid-column: span 4; }
+
+        /* Bar Dividers */
+        .bar-end {
+            border-right: 6px solid #10b981 !important; /* Emerald 500 */
+        }
+
+        /* Prevent scrolling while dragging on mobile touchscreens */
+        .touch-none {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Animations */
+        .btn-press:active { transform: scale(0.92); }
+        
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); filter: brightness(1.2); }
+            100% { transform: scale(1); }
+        }
+        .note-playing {
+            animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.8) !important;
+            z-index: 10;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .shake-error {
+            animation: shake 0.3s ease-in-out;
+            background-color: #fecaca !important; /* red-200 */
+        }
+
+        /* Active Tool Highlight */
+        .tool-active {
+            outline: 5px solid #f59e0b;
+            outline-offset: 4px;
+            transform: scale(1.1) !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
+        }
+
+        .drop-zone {
+            transition: all 0.2s ease;
+        }
+        .drop-zone-hover {
+            background-color: #bbf7d0 !important;
+            border-color: #10b981 !important;
+            transform: scale(1.02);
+        }
+
+        /* Tempo Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 36px;
+            width: 36px;
+            border-radius: 50%;
+            background: #f59e0b;
+            cursor: pointer;
+            margin-top: -12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 4px solid white;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 12px;
+            cursor: pointer;
+            background: #cbd5e1;
+            border-radius: 999px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Shimmer effect for loaded saves */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .shimmer-active {
+            background: linear-gradient(90deg, #fef08a 25%, #fde047 50%, #fef08a 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite linear;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800 pb-10">
+
+    <header class="p-4 text-center">
+        <h1 class="title-font text-4xl sm:text-5xl text-emerald-600 drop-shadow-md flex items-center justify-center gap-4 flex-wrap">
+            <span>🎵</span> 
+            <span>Melody Block Composer</span> 
+            <img src="Comic-logo.png" alt="Comic Logo" class="h-12 sm:h-16 w-auto object-contain inline-block align-middle" onerror="this.outerHTML='<span>🧱</span>'">
+        </h1>
+        <p class="text-slate-500 mt-2 text-lg font-bold">👉 Drag and drop blocks, or tap to stamp them onto the grid!</p>
+    </header>
+
+    <main class="flex-grow flex flex-col items-center justify-start px-2 w-full max-w-7xl mx-auto">
+        
+        <!-- Controls -->
+        <div class="bg-white rounded-3xl shadow-lg p-4 w-full flex flex-col md:flex-row items-center justify-between gap-4 mb-6 border-4 border-emerald-100">
+            <div class="flex items-center gap-3 w-full md:w-auto justify-center">
+                <button id="playBtn" class="btn-press bg-green-500 hover:bg-green-400 text-white font-bold text-xl py-2 px-6 rounded-2xl shadow-[0_4px_0_#166534] transition-colors flex items-center gap-2">
+                    ▶️ Play
+                </button>
+                <button id="stopBtn" class="btn-press bg-red-400 hover:bg-red-300 text-white font-bold text-xl py-2 px-6 rounded-2xl shadow-[0_4px_0_#991b1b] transition-colors flex items-center gap-2 hidden">
+                    ⏹️ Stop
+                </button>
+                <button id="clearBtn" class="btn-press bg-amber-400 hover:bg-amber-300 text-white font-bold text-lg py-2 px-4 rounded-2xl shadow-[0_4px_0_#b45309] transition-colors flex items-center gap-2">
+                    🧹 Clear All
+                </button>
+            </div>
+            <!-- Tempo Slider -->
+            <div class="flex items-center gap-3 bg-slate-50 p-2 px-4 rounded-2xl w-full md:w-auto max-w-xs border-2 border-slate-200">
+                <span class="text-2xl" title="Slow (Turtle)">🐢</span>
+                <input type="range" id="tempoSlider" min="60" max="200" value="120" class="flex-grow">
+                <span class="text-2xl" title="Fast (Rabbit)">🐇</span>
+            </div>
+            <!-- Cloud Connection Badge -->
+            <div id="connectionStatus" class="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 flex items-center gap-1.5 shrink-0">
+                <span class="w-2 h-2 rounded-full bg-slate-300"></span> Connecting...
+            </div>
+        </div>
+
+        <!-- The Main Composition Grid (4 Bars x 4 Beats = 16 Columns) -->
+        <div class="w-full overflow-x-auto pb-4 custom-scrollbar bg-white p-4 rounded-3xl border-4 border-emerald-300 shadow-xl relative">
+            
+            <!-- Playhead Visualizer -->
+            <div id="playhead" class="absolute top-4 bottom-4 w-[calc(6.25%-4px)] bg-emerald-400/30 rounded-xl pointer-events-none hidden z-0 transition-all duration-75 border-2 border-emerald-400"></div>
+
+            <div class="min-w-[800px] flex flex-col gap-4 relative z-10">
+                <!-- Row Headers & Grid -->
+                
+                <!-- BAR REPEAT CONTROLS -->
+                <div class="flex items-center gap-2">
+                    <div class="w-20 shrink-0 text-center font-bold text-amber-700 bg-amber-100 py-3 rounded-xl border-2 border-amber-200 title-font text-sm leading-tight">
+                        REPEATS<br><span class="text-xl">🔁</span>
+                    </div>
+                    <div class="flex-grow composer-grid h-12" id="repeats-grid">
+                        <!-- Spans 4 cells per bar, total 4 buttons -->
+                    </div>
+                </div>
+
+                <!-- PITCH ROW -->
+                <div class="flex items-center gap-2">
+                    <div class="w-20 shrink-0 text-center font-bold text-emerald-700 bg-emerald-100 py-4 rounded-xl border-2 border-emerald-200 title-font">
+                        PITCH<br><span class="text-2xl">🌈</span>
+                    </div>
+                    <div class="flex-grow composer-grid h-20" id="pitch-grid">
+                        <!-- Pitch cells populated by JS -->
+                    </div>
+                </div>
+
+                <!-- RHYTHM ROW -->
+                <div class="flex items-center gap-2">
+                    <div class="w-20 shrink-0 text-center font-bold text-blue-700 bg-blue-100 py-4 rounded-xl border-2 border-blue-200 title-font">
+                        RHYTHM<br><span class="text-2xl">🥁</span>
+                    </div>
+                    <div class="flex-grow composer-grid h-20" id="rhythm-grid">
+                        <!-- Rhythm cells populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Beat/Bar Numbers under grid -->
+                <div class="flex items-center gap-2 mt-[-10px] opacity-60 font-bold text-sm text-slate-500">
+                    <div class="w-20 shrink-0"></div> <!-- Spacer -->
+                    <div class="flex-grow composer-grid text-center">
+                        <div class="col-span-4 border-r-2 border-slate-300">Bar 1</div>
+                        <div class="col-span-4 border-r-2 border-slate-300">Bar 2</div>
+                        <div class="col-span-4 border-r-2 border-slate-300">Bar 3</div>
+                        <div class="col-span-4">Bar 4</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Palette / Toolbox Area -->
+        <div class="w-full mt-6 bg-slate-100 p-4 rounded-3xl border-4 border-slate-200 shadow-inner flex flex-col lg:flex-row gap-6">
+            
+            <!-- Eraser Tool -->
+            <div class="flex flex-col items-center justify-center border-b-4 lg:border-b-0 lg:border-r-4 border-slate-200 pb-4 lg:pb-0 lg:pr-6 shrink-0">
+                <h3 class="text-center font-bold text-slate-500 mb-2 title-font">🧼 Eraser</h3>
+                <button id="eraserBtn" class="touch-none w-16 h-16 rounded-2xl font-bold text-white text-3xl border-4 border-white transition-all bg-rose-400 shadow-[0_4px_0_#be123c] flex items-center justify-center hover:scale-105">
+                    🧼
+                </button>
+            </div>
+
+            <!-- Pitch Palette -->
+            <div class="flex-grow border-b-4 lg:border-b-0 lg:border-r-4 border-slate-200 pb-4 lg:pb-0 lg:pr-6">
+                <h3 class="text-center font-bold text-slate-500 mb-2 title-font">🎨 1. Choose a Pitch</h3>
+                <div class="flex flex-wrap justify-center gap-2 sm:gap-3" id="pitch-palette">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Rhythm Palette -->
+            <div class="flex-grow">
+                <h3 class="text-center font-bold text-slate-500 mb-2 title-font">⏳ 2. Choose a Rhythm</h3>
+                <div class="flex flex-wrap justify-center gap-2 sm:gap-3 items-end" id="rhythm-palette">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 💾 Save System (My Treasure Chest) -->
+        <div class="w-full mt-8 bg-amber-50 rounded-3xl border-4 border-amber-300 p-6 shadow-xl">
+            <h2 class="title-font text-2xl sm:text-3xl text-amber-700 text-center mb-4 flex items-center justify-center gap-2">
+                <span>📦</span> My Magic Song Chest (Save Up to 10 Songs!) <span>✨</span>
+            </h2>
+            <div id="saveSlotsContainer" class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <!-- 10 Save Slots Generated by JS -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Firebase SDK Imports (Module setup) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- DATA STRUCTURES ---
+        
+        // Pitches (Low Do to High Do)
+        const PITCHES = [
+            { id: 'p1', name: 'Do', freq: 261.63, color: 'bg-red-500', class: 'shadow-[0_4px_0_#991b1b]' },
+            { id: 'p2', name: 'Re', freq: 293.66, color: 'bg-orange-400', class: 'shadow-[0_4px_0_#c2410c]' },
+            { id: 'p3', name: 'Mi', freq: 329.63, color: 'bg-yellow-400', class: 'shadow-[0_4px_0_#a16207]' },
+            { id: 'p4', name: 'Fa', freq: 349.23, color: 'bg-green-400', class: 'shadow-[0_4px_0_#15803d]' },
+            { id: 'p5', name: 'Sol', freq: 392.00, color: 'bg-cyan-400', class: 'shadow-[0_4px_0_#0e7490]' },
+            { id: 'p6', name: 'La', freq: 440.00, color: 'bg-indigo-500', class: 'shadow-[0_4px_0_#312e81]' },
+            { id: 'p7', name: 'Ti', freq: 493.88, color: 'bg-purple-500', class: 'shadow-[0_4px_0_#581c87]' },
+            { id: 'p8', name: 'Do', freq: 523.25, color: 'bg-pink-400', class: 'shadow-[0_4px_0_#be185d]' }
+        ];
+
+        // Rhythms (Durations in beats)
+        const RHYTHMS = [
+            { id: 'r1', name: 'Quarter', duration: 1, symbol: '♩', label: '1 Beat', color: 'bg-slate-700', widthClass: 'w-16' },
+            { id: 'r2', name: 'Half', duration: 2, symbol: '𝅗𝅥', label: '2 Beats', color: 'bg-slate-700', widthClass: 'w-24' },
+            { id: 'r3', name: 'Dotted', duration: 3, symbol: '𝅗𝅥.', label: '3 Beats', color: 'bg-slate-700', widthClass: 'w-32' },
+            { id: 'r4', name: 'Whole', duration: 4, symbol: '𝅝', label: '4 Beats', color: 'bg-slate-700', widthClass: 'w-40' }
+        ];
+
+        const TOTAL_BEATS = 16;
+        
+        // Application State
+        let pitchTrack = Array(TOTAL_BEATS).fill(null);
+        let rhythmTrack = Array(TOTAL_BEATS).fill(null); 
+        let barRepeats = [0, 0, 0, 0]; // Index maps to Bar 1, 2, 3, 4. Each element can be repeated up to 4 times.
+        
+        let activeTool = null; // { type: 'pitch'|'rhythm'|'eraser', data: object }
+        let isPlaying = false;
+        
+        // Loop execution positions
+        let currentBar = 0;
+        let currentStepInBar = 0;
+        let currentBarRepeatIndex = 0;
+        
+        let playInterval;
+
+        let activeDrag = null; // Coordinates drag state across pointer moves
+        let preventNextClick = false; // Protects from duplicate click firing after touch-drag releases
+
+        // Firebase-linked Slots storage (in-memory caching first)
+        let savedSongsList = Array(10).fill(null);
+        let db, auth, userId = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'melody-maker-app';
+
+        // --- AUDIO ENGINE ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        // Beautiful Glockenspiel Synthesizer
+        function playTone(freq, durationMs) {
+            initAudio();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now);
+            
+            const durSec = durationMs / 1000;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.35, now + 0.02); // fast attack
+            gainNode.gain.setValueAtTime(0.35, now + durSec - 0.05);
+            gainNode.gain.linearRampToValueAtTime(0.001, now + durSec);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + durSec);
+            
+            // Mallet strike harmonic transient strike
+            const transientOsc = audioCtx.createOscillator();
+            const transientGain = audioCtx.createGain();
+            transientOsc.type = 'sine';
+            transientOsc.frequency.setValueAtTime(freq * 3, now); 
+            
+            transientGain.gain.setValueAtTime(0.15, now);
+            transientGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03); 
+            
+            transientOsc.connect(transientGain);
+            transientGain.connect(audioCtx.destination);
+            transientOsc.start(now);
+            transientOsc.stop(now + 0.04);
+        }
+
+        function playPercussion() {
+            initAudio();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(120, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+            
+            gainNode.gain.setValueAtTime(0.4, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.12);
+        }
+
+        function playEraserSound() {
+            initAudio();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+            
+            gainNode.gain.setValueAtTime(0.15, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        }
+
+        // Magical sound when saving/opening files
+        function playSparkleSound() {
+            initAudio();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const notes = [523.25, 659.25, 783.99, 1046.50]; // C Major Arpeggio chime
+            notes.forEach((freq, idx) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+                
+                gain.gain.setValueAtTime(0, now + idx * 0.05);
+                gain.gain.linearRampToValueAtTime(0.1, now + idx * 0.05 + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now + idx * 0.05);
+                osc.stop(now + idx * 0.05 + 0.3);
+            });
+        }
+
+        // --- FIREBASE CLOUD SETUP & RULE 3 AUTHENTICATION ---
+        async function setupCloudFirebase() {
+            const statusEl = document.getElementById('connectionStatus');
+            try {
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    // Authentic first! Rule 3 compliance
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, async (u) => {
+                        if (u) {
+                            userId = u.uid;
+                            statusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-green-500"></span> 🟢 Cloud Active`;
+                            statusEl.className = "text-xs font-bold text-green-700 bg-green-50 px-3 py-1 rounded-full border border-green-200 flex items-center gap-1.5 shrink-0";
+                            await loadAllSaves();
+                        } else {
+                            userId = null;
+                            statusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span> Offline Cache`;
+                        }
+                    });
+                } else {
+                    statusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Private In-Memory Box`;
+                    statusEl.className = "text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1.5 shrink-0";
+                }
+            } catch (err) {
+                console.error("Firebase init issue:", err);
+                statusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-red-500"></span> Memory Sandbox`;
+                statusEl.className = "text-xs font-bold text-red-700 bg-red-50 px-3 py-1 rounded-full border border-red-200 flex items-center gap-1.5 shrink-0";
+            }
+        }
+
+        // --- CLOUD CRUD HANDLERS (RULE 1 PATHS & RULE 2 SIMPLE QUERIES) ---
+        async function loadAllSaves() {
+            if (!db || !userId) return;
+            try {
+                // Rule 1: STRICT PATH: /artifacts/{appId}/users/{userId}/{collectionName}
+                const savesCollection = collection(db, 'artifacts', appId, 'users', userId, 'saves');
+                // Rule 2: NO compound or complex queries. Fetch all simply.
+                const querySnapshot = await getDocs(savesCollection);
+                
+                // Clear state list first
+                savedSongsList = Array(10).fill(null);
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (data && typeof data.slotIndex !== 'undefined') {
+                        savedSongsList[data.slotIndex] = {
+                            id: docSnap.id,
+                            pitchTrack: JSON.parse(data.pitchTrack || "[]"),
+                            rhythmTrack: JSON.parse(data.rhythmTrack || "[]"),
+                            barRepeats: JSON.parse(data.barRepeats || "[0,0,0,0]"),
+                            tempo: data.tempo || 120,
+                            updatedAt: data.updatedAt
+                        };
+                    }
+                });
+                renderSaveSlots();
+            } catch (err) {
+                console.error("Error reading saves:", err);
+            }
+        }
+
+        async function saveToSlot(slotIndex) {
+            initAudio();
+            const slotName = `slot_${slotIndex}`;
+            const saveDataObj = {
+                slotIndex: slotIndex,
+                // Serialize nested structures safely
+                pitchTrack: JSON.stringify(pitchTrack),
+                rhythmTrack: JSON.stringify(rhythmTrack),
+                barRepeats: JSON.stringify(barRepeats),
+                tempo: parseInt(document.getElementById('tempoSlider').value),
+                updatedAt: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+            };
+
+            // In-Memory cache backup instantly
+            savedSongsList[slotIndex] = {
+                id: slotName,
+                pitchTrack: JSON.parse(saveDataObj.pitchTrack),
+                rhythmTrack: JSON.parse(saveDataObj.rhythmTrack),
+                barRepeats: JSON.parse(saveDataObj.barRepeats),
+                tempo: saveDataObj.tempo,
+                updatedAt: saveDataObj.updatedAt
+            };
+
+            playSparkleSound();
+            renderSaveSlots();
+
+            // Cloud Write
+            if (db && userId) {
+                try {
+                    // Rule 1 STRICT PATH
+                    const saveDocRef = doc(db, 'artifacts', appId, 'users', userId, 'saves', slotName);
+                    await setDoc(saveDocRef, saveDataObj);
+                } catch (err) {
+                    console.error("Cloud save failed:", err);
+                }
+            }
+        }
+
+        async function deleteSlot(slotIndex, e) {
+            e.stopPropagation(); // Avoid triggering loading mechanics
+            initAudio();
+            
+            savedSongsList[slotIndex] = null;
+            playEraserSound();
+            renderSaveSlots();
+
+            if (db && userId) {
+                try {
+                    const slotName = `slot_${slotIndex}`;
+                    const saveDocRef = doc(db, 'artifacts', appId, 'users', userId, 'saves', slotName);
+                    await deleteDoc(saveDocRef);
+                } catch (err) {
+                    console.error("Cloud delete failed:", err);
+                }
+            }
+        }
+
+        function loadFromSlot(slotIndex) {
+            initAudio();
+            const song = savedSongsList[slotIndex];
+            if (!song) return;
+
+            stopPlaying();
+            
+            // Re-inflate arrays
+            pitchTrack = [...song.pitchTrack];
+            rhythmTrack = [...song.rhythmTrack];
+            barRepeats = [...song.barRepeats];
+            document.getElementById('tempoSlider').value = song.tempo;
+
+            playSparkleSound();
+            renderRepeats();
+            renderGrid();
+            
+            // Highlight load slot visually
+            const slotEl = document.getElementById(`save-slot-${slotIndex}`);
+            if (slotEl) {
+                slotEl.classList.add('shimmer-active');
+                setTimeout(() => slotEl.classList.remove('shimmer-active'), 1200);
+            }
+        }
+
+        // --- POINTER EVENT DRAG LOGIC (MOBILE FRIENDLY) ---
+        
+        function bindPointerDrag(btn, type, data) {
+            btn.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0) return; // limit to primary buttons
+                initAudio();
+                
+                if (type === 'pitch') {
+                    playTone(data.freq, 300);
+                } else if (type === 'rhythm') {
+                    playPercussion();
+                } else if (type === 'eraser') {
+                    playEraserSound();
+                }
+
+                btn.setPointerCapture(e.pointerId);
+
+                activeDrag = {
+                    pointerId: e.pointerId,
+                    type: type,
+                    data: data,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    dragged: false,
+                    cloneEl: null
+                };
+
+                setActiveTool(type, data);
+            });
+
+            btn.addEventListener('pointermove', (e) => {
+                if (!activeDrag || activeDrag.pointerId !== e.pointerId) return;
+
+                const dx = e.clientX - activeDrag.startX;
+                const dy = e.clientY - activeDrag.startY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (!activeDrag.dragged && dist > 10) {
+                    activeDrag.dragged = true;
+
+                    // Create physical drag avatar representation
+                    const clone = btn.cloneNode(true);
+                    clone.style.position = 'fixed';
+                    clone.style.pointerEvents = 'none';
+                    clone.style.zIndex = '9999';
+                    clone.style.opacity = '0.9';
+                    clone.style.transform = 'scale(1.1)';
+                    clone.style.boxShadow = '0 12px 24px rgba(0,0,0,0.25)';
+                    document.body.appendChild(clone);
+                    activeDrag.cloneEl = clone;
+                }
+
+                if (activeDrag.dragged && activeDrag.cloneEl) {
+                    const width = btn.offsetWidth;
+                    const height = btn.offsetHeight;
+                    activeDrag.cloneEl.style.left = `${e.clientX - width / 2}px`;
+                    activeDrag.cloneEl.style.top = `${e.clientY - height / 2}px`;
+
+                    const hoveredEl = document.elementFromPoint(e.clientX, e.clientY);
+                    
+                    document.querySelectorAll('.drop-zone-hover').forEach(el => el.classList.remove('drop-zone-hover'));
+
+                    if (hoveredEl) {
+                        const gridCell = hoveredEl.closest('.grid-cell');
+                        if (gridCell) {
+                            const cellType = gridCell.dataset.type;
+                            if (activeDrag.type === 'eraser' || cellType === activeDrag.type) {
+                                gridCell.classList.add('drop-zone-hover');
+                            }
+                        }
+                    }
+                }
+            });
+
+            btn.addEventListener('pointerup', (e) => {
+                if (!activeDrag || activeDrag.pointerId !== e.pointerId) return;
+                btn.releasePointerCapture(e.pointerId);
+
+                if (activeDrag.cloneEl) {
+                    activeDrag.cloneEl.remove();
+                }
+
+                document.querySelectorAll('.drop-zone-hover').forEach(el => el.classList.remove('drop-zone-hover'));
+
+                if (activeDrag.dragged) {
+                    preventNextClick = true;
+                    setTimeout(() => { preventNextClick = false; }, 100);
+
+                    const hoveredEl = document.elementFromPoint(e.clientX, e.clientY);
+                    if (hoveredEl) {
+                        const gridCell = hoveredEl.closest('.grid-cell');
+                        if (gridCell) {
+                            const cellType = gridCell.dataset.type;
+                            const cellIndex = parseInt(gridCell.dataset.index);
+
+                            if (activeDrag.type === 'eraser') {
+                                removeBlock(cellType, cellIndex);
+                                playEraserSound();
+                            } else if (cellType === activeDrag.type) {
+                                placeBlock(activeDrag.type, cellIndex, activeDrag.data);
+                            } else {
+                                showErrorShake(gridCell);
+                            }
+                        }
+                    }
+                }
+
+                activeDrag = null;
+            });
+
+            btn.addEventListener('pointercancel', (e) => {
+                if (!activeDrag || activeDrag.pointerId !== e.pointerId) return;
+                btn.releasePointerCapture(e.pointerId);
+                if (activeDrag.cloneEl) activeDrag.cloneEl.remove();
+                document.querySelectorAll('.drop-zone-hover').forEach(el => el.classList.remove('drop-zone-hover'));
+                activeDrag = null;
+            });
+        }
+
+        // --- PALETTES & PRESET RENDERING ---
+        
+        const pitchGridEl = document.getElementById('pitch-grid');
+        const rhythmGridEl = document.getElementById('rhythm-grid');
+        const repeatsGridEl = document.getElementById('repeats-grid');
+        const saveSlotsContainer = document.getElementById('saveSlotsContainer');
+        const pitchPaletteEl = document.getElementById('pitch-palette');
+        const rhythmPaletteEl = document.getElementById('rhythm-palette');
+        const eraserBtn = document.getElementById('eraserBtn');
+        
+        function renderPalettes() {
+            pitchPaletteEl.innerHTML = '';
+            PITCHES.forEach(pitch => {
+                const btn = document.createElement('button');
+                const isActive = activeTool && activeTool.type === 'pitch' && activeTool.data.id === pitch.id;
+                btn.className = `touch-none w-14 h-14 sm:w-16 sm:h-16 rounded-2xl font-bold text-white text-xl sm:text-2xl border-4 border-white transition-all ${pitch.color} ${pitch.class} ${isActive ? 'tool-active' : 'hover:scale-105'}`;
+                btn.innerHTML = pitch.name;
+                
+                bindPointerDrag(btn, 'pitch', pitch);
+                pitchPaletteEl.appendChild(btn);
+            });
+
+            rhythmPaletteEl.innerHTML = '';
+            RHYTHMS.forEach(rhythm => {
+                const btn = document.createElement('button');
+                const isActive = activeTool && activeTool.type === 'rhythm' && activeTool.data.id === rhythm.id;
+                btn.className = `touch-none h-14 sm:h-16 rounded-2xl font-bold text-white border-4 border-slate-300 shadow-[0_4px_0_#94a3b8] transition-all flex flex-col items-center justify-center ${rhythm.color} ${rhythm.widthClass} ${isActive ? 'tool-active' : 'hover:scale-105'}`;
+                btn.innerHTML = `<span class="text-3xl leading-none pointer-events-none">${rhythm.symbol}</span><span class="text-[10px] uppercase pointer-events-none">${rhythm.label}</span>`;
+                
+                bindPointerDrag(btn, 'rhythm', rhythm);
+                rhythmPaletteEl.appendChild(btn);
+            });
+        }
+
+        function setActiveTool(type, data) {
+            initAudio();
+            if (type === null) {
+                activeTool = null;
+            } else if (activeTool && activeTool.type === type && (type === 'eraser' || activeTool.data.id === data.id)) {
+                activeTool = null; // Toggle selection off
+            } else {
+                activeTool = { type, data };
+            }
+            renderPalettes();
+            
+            if (activeTool && activeTool.type === 'eraser') {
+                eraserBtn.classList.add('tool-active');
+            } else {
+                eraserBtn.classList.remove('tool-active');
+            }
+        }
+
+        // --- GRID RENDERING ---
+
+        function renderGrid() {
+            pitchGridEl.innerHTML = '';
+            rhythmGridEl.innerHTML = '';
+
+            for (let i = 0; i < TOTAL_BEATS; i++) {
+                const isBarEnd = (i + 1) % 4 === 0;
+                
+                // --- PITCH CELL ---
+                const pCell = document.createElement('div');
+                pCell.className = `grid-cell col-span-1 rounded-xl border-2 border-dashed border-emerald-200 bg-white/50 flex items-center justify-center drop-zone relative cursor-pointer ${isBarEnd ? 'bar-end' : ''}`;
+                pCell.dataset.type = 'pitch';
+                pCell.dataset.index = i;
+                
+                if (pitchTrack[i]) {
+                    const block = pitchTrack[i];
+                    pCell.innerHTML = `<div class="w-full h-full rounded-lg text-white font-bold text-xl flex items-center justify-center ${block.color} shadow-sm border-2 border-white pointer-events-none">${block.name}</div>`;
+                } else {
+                    pCell.innerHTML = '';
+                }
+                
+                pCell.onclick = () => handleGridClick('pitch', i);
+                pitchGridEl.appendChild(pCell);
+
+                // --- RHYTHM CELL ---
+                if (rhythmTrack[i] === 'span') continue;
+
+                const rCell = document.createElement('div');
+                rCell.dataset.type = 'rhythm';
+                rCell.dataset.index = i;
+                let colSpan = 1;
+                
+                if (rhythmTrack[i] && typeof rhythmTrack[i] === 'object') {
+                    const block = rhythmTrack[i];
+                    colSpan = block.duration;
+                    
+                    const spanEndsOnBar = (i + colSpan) % 4 === 0;
+
+                    rCell.className = `grid-cell col-span-${colSpan} rounded-xl border-2 border-slate-300 bg-white shadow-sm flex items-center justify-center relative cursor-pointer ${block.color} overflow-hidden ${spanEndsOnBar ? 'bar-end' : ''}`;
+                    rCell.innerHTML = `<span class="text-4xl text-white drop-shadow-md pointer-events-none">${block.symbol}</span>`;
+                } else {
+                    rCell.className = `grid-cell col-span-1 rounded-xl border-2 border-dashed border-blue-200 bg-white/50 flex items-center justify-center drop-zone relative cursor-pointer ${isBarEnd ? 'bar-end' : ''}`;
+                    rCell.innerHTML = '';
+                }
+
+                rCell.onclick = () => handleGridClick('rhythm', i);
+                rhythmGridEl.appendChild(rCell);
+            }
+        }
+
+        // --- BAR REPEAT RENDERER & LOGIC ---
+
+        function renderRepeats() {
+            repeatsGridEl.innerHTML = '';
+            for (let barIdx = 0; barIdx < 4; barIdx++) {
+                const rCount = barRepeats[barIdx];
+                let btnStyle = "";
+                let btnLabel = "";
+                
+                // Kid-friendly progression colors for repeated loops
+                if (rCount === 0) {
+                    btnStyle = "bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200";
+                    btnLabel = "Play Once";
+                } else if (rCount === 1) {
+                    btnStyle = "bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200 scale-[0.98]";
+                    btnLabel = "🔁 Repeat 1x";
+                } else if (rCount === 2) {
+                    btnStyle = "bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200 scale-[0.98]";
+                    btnLabel = "🔁 Repeat 2x";
+                } else if (rCount === 3) {
+                    btnStyle = "bg-pink-100 text-pink-700 border-pink-300 hover:bg-pink-200 scale-[0.98]";
+                    btnLabel = "🔁 Repeat 3x";
+                } else {
+                    btnStyle = "bg-rose-100 text-rose-700 border-rose-300 hover:bg-rose-200 scale-[0.98]";
+                    btnLabel = "🔁 Repeat 4x";
+                }
+
+                const rBtn = document.createElement('button');
+                rBtn.className = `col-span-4 h-full rounded-2xl border-2 font-bold flex items-center justify-center gap-1.5 transition-all text-sm md:text-base ${btnStyle}`;
+                rBtn.innerHTML = `<span>Bar ${barIdx + 1}:</span> <span class="font-extrabold">${btnLabel}</span>`;
+                
+                rBtn.onclick = () => cycleBarRepeat(barIdx);
+                repeatsGridEl.appendChild(rBtn);
+            }
+        }
+
+        function cycleBarRepeat(barIdx) {
+            initAudio();
+            // Up to 4 times
+            barRepeats[barIdx] = (barRepeats[barIdx] + 1) % 5;
+            
+            // Play a small woodblock ping confirming the tap
+            playPercussion();
+            renderRepeats();
+        }
+
+        // --- SAVE SLOTS RENDERER ---
+
+        function renderSaveSlots() {
+            saveSlotsContainer.innerHTML = '';
+            for (let i = 0; i < 10; i++) {
+                const song = savedSongsList[i];
+                const slotCard = document.createElement('div');
+                slotCard.id = `save-slot-${i}`;
+                
+                if (song) {
+                    // Filled slot!
+                    const noteCount = song.pitchTrack.filter(n => n !== null).length;
+                    slotCard.className = "bg-gradient-to-br from-amber-100 to-orange-100 border-4 border-amber-300 rounded-3xl p-3 flex flex-col justify-between items-center transition-all shadow-[0_4px_0_#d97706] hover:scale-[1.03] cursor-pointer text-center relative overflow-hidden group min-h-[140px]";
+                    slotCard.onclick = () => loadFromSlot(i);
+
+                    slotCard.innerHTML = `
+                        <div class="absolute top-1.5 left-1.5 w-6 h-6 rounded-full bg-amber-400 text-white font-bold text-xs flex items-center justify-center">${i + 1}</div>
+                        <button class="absolute top-1.5 right-1.5 w-7 h-7 bg-red-400/80 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-sm shadow-md transition-transform active:scale-90" title="Delete Song" id="del-btn-${i}">🗑️</button>
+                        <div class="mt-4 font-bold text-amber-900 text-sm">Song ${i + 1}</div>
+                        <div class="text-[10px] text-amber-700/80 font-bold mb-1">${song.updatedAt || 'Recently Saved'}</div>
+                        <div class="text-xs font-bold text-emerald-700 bg-white/70 px-2.5 py-1 rounded-full border border-amber-200/50 mt-1 flex items-center gap-1">
+                            🎵 <span class="font-black">${noteCount}</span> Notes
+                        </div>
+                        <button class="w-full mt-3 bg-emerald-500 text-white font-bold text-xs py-1.5 px-3 rounded-xl shadow-[0_2px_0_#047857] group-hover:scale-105 transition-transform pointer-events-none">
+                            📂 Open Song
+                        </button>
+                    `;
+
+                    // Expose safe listeners
+                    setTimeout(() => {
+                        const delBtn = document.getElementById(`del-btn-${i}`);
+                        if (delBtn) delBtn.onclick = (e) => deleteSlot(i, e);
+                    }, 0);
+                    
+                } else {
+                    // Empty slot!
+                    slotCard.className = "border-4 border-dashed border-amber-200 bg-white hover:bg-amber-50/50 rounded-3xl p-3 flex flex-col justify-center items-center gap-2 cursor-pointer transition-all min-h-[140px] hover:border-amber-400 group";
+                    slotCard.onclick = () => saveToSlot(i);
+                    slotCard.innerHTML = `
+                        <span class="text-3xl filter opacity-40 group-hover:opacity-100 transition-opacity">💾</span>
+                        <span class="text-xs font-bold text-amber-700/60 group-hover:text-amber-700 transition-colors">Save Current Slot ${i+1}</span>
+                    `;
+                }
+                
+                saveSlotsContainer.appendChild(slotCard);
+            }
+        }
+
+        // --- GRID PLACEMENT & STAMP LOGIC ---
+
+        function handleGridClick(rowType, index) {
+            if (preventNextClick) return;
+            initAudio();
+
+            if (activeTool) {
+                if (activeTool.type === 'eraser') {
+                    removeBlock(rowType, index);
+                    playEraserSound();
+                } else if (activeTool.type === rowType) {
+                    placeBlock(rowType, index, activeTool.data);
+                } else {
+                    const container = rowType === 'pitch' ? pitchGridEl : rhythmGridEl;
+                    let cell = container.children[index];
+                    if (cell) showErrorShake(cell);
+                }
+            } else {
+                // Interactive instrument mode
+                if (rowType === 'pitch' && pitchTrack[index]) {
+                    playTone(pitchTrack[index].freq, 300);
+                    const cell = pitchGridEl.children[index];
+                    if (cell && cell.children[0]) {
+                        cell.children[0].classList.add('note-playing');
+                        setTimeout(() => cell.children[0].classList.remove('note-playing'), 300);
+                    }
+                } else if (rowType === 'rhythm' && rhythmTrack[index]) {
+                    const block = rhythmTrack[index];
+                    if (block && typeof block === 'object') {
+                        playPercussion();
+                        
+                        let domIdx = 0;
+                        for(let i=0; i<index; i++) {
+                            if(rhythmTrack[i] !== 'span') domIdx++;
+                        }
+                        const cell = rhythmGridEl.children[domIdx];
+                        if (cell) {
+                            cell.classList.add('note-playing');
+                            setTimeout(() => cell.classList.remove('note-playing'), 300);
+                        }
+                    }
+                }
+            }
+        }
+
+        function placeBlock(type, index, data) {
+            if (type === 'pitch') {
+                pitchTrack[index] = data;
+                renderGrid();
+                playTone(data.freq, 300);
+            } 
+            else if (type === 'rhythm') {
+                const duration = data.duration;
+                if (index + duration > TOTAL_BEATS) {
+                    showErrorShakeGrid(index, 'rhythm');
+                    return;
+                }
+                for (let i = index; i < index + duration; i++) {
+                    if (rhythmTrack[i] !== null) {
+                        showErrorShakeGrid(index, 'rhythm');
+                        return;
+                    }
+                }
+                rhythmTrack[index] = data;
+                for (let i = index + 1; i < index + duration; i++) {
+                    rhythmTrack[i] = 'span';
+                }
+                renderGrid();
+                playPercussion();
+            }
+        }
+
+        function removeBlock(type, index) {
+            if (type === 'pitch') {
+                pitchTrack[index] = null;
+            } else if (type === 'rhythm') {
+                let parentIndex = index;
+                while (rhythmTrack[parentIndex] === 'span' && parentIndex > 0) {
+                    parentIndex--;
+                }
+                
+                const block = rhythmTrack[parentIndex];
+                if (block && typeof block === 'object') {
+                    const dur = block.duration;
+                    for (let i = parentIndex; i < parentIndex + dur; i++) {
+                        rhythmTrack[i] = null;
+                    }
+                }
+            }
+            renderGrid();
+        }
+
+        function showErrorShake(element) {
+            element.classList.add('shake-error');
+            setTimeout(() => element.classList.remove('shake-error'), 300);
+        }
+        function showErrorShakeGrid(index, type) {
+            const container = type === 'pitch' ? pitchGridEl : rhythmGridEl;
+            if(container) showErrorShake(container);
+        }
+
+        // --- PLAYBACK ENGINE ---
+
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const tempoSlider = document.getElementById('tempoSlider');
+        const playhead = document.getElementById('playhead');
+
+        function step() {
+            document.querySelectorAll('.note-playing').forEach(el => el.classList.remove('note-playing'));
+
+            // Calculate exact position mapped to our repeat looping logic
+            const activeCol = currentBar * 4 + currentStepInBar;
+
+            playhead.style.display = 'block';
+            playhead.style.left = `calc(${(100 / TOTAL_BEATS) * activeCol}% + 8px)`;
+
+            const rhythmVal = rhythmTrack[activeCol];
+            const pitchVal = pitchTrack[activeCol];
+            
+            const bpm = parseInt(tempoSlider.value);
+            const msPerBeat = 60000 / bpm;
+
+            if (rhythmVal && typeof rhythmVal === 'object') {
+                const totalDurationMs = rhythmVal.duration * msPerBeat;
+                
+                if (pitchVal) {
+                    playTone(pitchVal.freq, totalDurationMs);
+                    
+                    const pCell = pitchGridEl.children[activeCol];
+                    if(pCell && pCell.children[0]) pCell.children[0].classList.add('note-playing');
+                } else {
+                    playPercussion();
+                }
+
+                // Animate rhythm block
+                let currentDomIndex = 0;
+                for(let i=0; i<activeCol; i++) {
+                    if(rhythmTrack[i] !== 'span') currentDomIndex++;
+                }
+                const rCell = rhythmGridEl.children[currentDomIndex];
+                if(rCell) rCell.classList.add('note-playing');
+            }
+
+            // ADVANCE PLAYBACK STATE (LOOP & BAR REPEAT MATRICES)
+            currentStepInBar++;
+            if (currentStepInBar >= 4) {
+                // We reached the end of this 4-beat bar. Check repeats!
+                if (currentBarRepeatIndex < barRepeats[currentBar]) {
+                    // Loop this same bar again
+                    currentBarRepeatIndex++;
+                    currentStepInBar = 0;
+                } else {
+                    // Move to the next bar
+                    currentBarRepeatIndex = 0;
+                    currentStepInBar = 0;
+                    currentBar = (currentBar + 1) % 4;
+                }
+            }
+        }
+
+        function startPlaying() {
+            initAudio();
+            if (isPlaying) return;
+            
+            isPlaying = true;
+            playBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            setActiveTool(null); 
+            
+            const bpm = parseInt(tempoSlider.value);
+            const msPerBeat = 60000 / bpm;
+            
+            // Start from beginning
+            currentBar = 0;
+            currentStepInBar = 0;
+            currentBarRepeatIndex = 0;
+
+            step();
+            playInterval = setInterval(step, msPerBeat);
+        }
+
+        function stopPlaying() {
+            isPlaying = false;
+            clearInterval(playInterval);
+            playBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            playhead.style.display = 'none';
+            document.querySelectorAll('.note-playing').forEach(el => el.classList.remove('note-playing'));
+        }
+
+        function clearGrid() {
+            stopPlaying();
+            pitchTrack.fill(null);
+            rhythmTrack.fill(null);
+            barRepeats = [0, 0, 0, 0];
+            renderRepeats();
+            renderGrid();
+        }
+
+        // --- EVENT ATTACHMENTS ---
+
+        playBtn.addEventListener('click', startPlaying);
+        stopBtn.addEventListener('click', stopPlaying);
+        clearBtn.addEventListener('click', clearGrid);
+        
+        tempoSlider.addEventListener('input', () => {
+            if (isPlaying) {
+                clearInterval(playInterval);
+                const msPerBeat = 60000 / parseInt(tempoSlider.value);
+                playInterval = setInterval(step, msPerBeat);
+            }
+        });
+
+        document.body.addEventListener('pointerdown', () => {
+            initAudio();
+        }, { once: true });
+
+        bindPointerDrag(eraserBtn, 'eraser', null);
+        eraserBtn.addEventListener('click', () => {
+            setActiveTool('eraser', null);
+        });
+
+        document.body.addEventListener('click', (e) => {
+            if (preventNextClick) return;
+            if(activeTool && !e.target.closest('#pitch-palette') && !e.target.closest('#rhythm-palette') && !e.target.closest('#eraserBtn') && !e.target.closest('.composer-grid')) {
+                setActiveTool(null);
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderPalettes();
+            renderRepeats();
+            renderGrid();
+            renderSaveSlots();
+            setupCloudFirebase();
+        });
+
+    </script>
+</body>
+</html>
